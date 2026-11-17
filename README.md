@@ -18,27 +18,31 @@ per person, and the video stages add a frozen MViT-V2-S for the pixels around ea
 
 ## What is in this repository, and what is not
 
-21 files, 38 MB: the pipeline, both front ends, and **all three trained models**, so every command
-in this README runs on a fresh clone with no training step.
+Every script, the page, and **every model the commands below load**, so a fresh clone runs each
+section without a training step first:
 
-| model | size | what loads it |
+| ships | size | loaded by |
 |---|---|---|
-| `video_model.pkl` | 24 KB | `demo.py` and `web_app.py` by default |
-| `fused_model.pkl` | 37 MB (a 200-tree forest) | `--model fused_model.pkl`, for a calibrated camera |
-| `kaggle_window_model.pkl` | 1.2 MB | `--model kaggle_window_model.pkl`, the pose-only stage |
+| `video_model.pkl` | 24 KB | `demo.py` / `web_app.py` by default |
+| `fused_model.pkl` | 37 MB (a 200-tree forest) | `--model fused_model.pkl` |
+| `kaggle_window_model.pkl` | 1.2 MB | `--model kaggle_window_model.pkl` |
+| `activity_model.pkl`, `kaggle_model.pkl`, `kaggle_full_model.pkl` | ~2.3 MB | the single-frame sections |
+| `dataset.csv`, `kaggle_dataset.csv`, `kaggle_full_dataset.csv` | 0.6 MB | `train_model.py` |
 
-Left out, because it is bulky and every script here regenerates it:
+Left out, because it is bulky and the scripts here rebuild it:
 
 | not included | how to get it |
 |---|---|
 | `yolo11n-pose.pt` | downloaded automatically on the first run |
-| the Kaggle CCTV dataset | `kagglehub` downloads it; `kaggle_to_windows.py` turns it into training data |
+| the Kaggle CCTV dataset | `python3 data.py`, or `kagglehub` on first use |
 | `archive/` videos (one sub-folder per class) | your own footage, or any shoplifting/normal video set |
-| `*_windows.csv` (67 MB), `video_embeddings.npz` (9 MB) | `folder_to_windows.py`, `videos_to_embeddings.py` |
+| `archive_windows.csv` (67 MB), `kaggle_windows.csv` (3 MB) | `folder_to_windows.py`, `kaggle_to_windows.py` |
+| `video_embeddings.npz` (9 MB) | `videos_to_embeddings.py` |
+| `archive_only_window_model.pkl`, `shoplift_window_model.pkl` (37 MB each) | `train_window_model.py` with those CSVs |
 
-Retraining on your own footage is the point, not an afterthought — the numbers quoted below come
-from 178 archive videos plus 8 Kaggle clips, and a model that has never seen your camera is barely
-better than guessing on it.
+Retraining on your own footage is the point, not an afterthought — the numbers below come from 178
+archive videos plus 8 Kaggle clips, and a model that has never seen your camera is barely better
+than guessing on it.
 
 ## Setup
 
@@ -59,7 +63,15 @@ System Settings > Privacy & Security > Camera, then restart that app.
 | `README.md` | This file. |
 | `requirements.txt` | The five packages this needs (plus torch for the video model). |
 | `.gitignore` | Keeps datasets and derived CSVs out of git; the trained models are let through. |
-| `kaggle_to_csv.py` | Reads the Kaggle dataset's labels (which seconds of each clip are the concealment). |
+| `collect_data.py` | Record labelled keypoints from a webcam or video into a CSV. |
+| `train_model.py` | Train a RandomForest on that CSV and save a `.pkl`. |
+| `live_inference.py` | Classify live from a webcam or video file; raises a verdict alert. |
+| `kaggle_to_csv.py` | Convert the Kaggle CCTV dataset into a single-frame training CSV, and read its concealment labels. |
+| `define_zones.py` | Draw shelf zones on a frame; saves `zones.json`. |
+| `risk_engine.py` | Rule engine: reach into a shelf zone, then hand to body, builds a risk score. |
+| `shoplift_demo.py` | Tracking + zones + risk score + dashboard, alerts, snapshots, event log. |
+| `finetune_pose.py` | Fine-tune YOLO pose on the Kaggle dataset's own keypoint labels. |
+| `data.py` | Downloads the Kaggle dataset with `kagglehub`. |
 | `pose_utils.py` | Shared keypoint extraction. Always returns exactly 34 floats (17 x,y pairs), normalised to the person's bounding box; undetected keypoints are 0.0. |
 | `demo.py` | Camera demo: tracks every person, scores each separately, flags the suspect with a red box. Loads `video_model.pkl` by default. `python3 demo.py` |
 | `video_utils.py` | Video-model helpers: person crops over 2 s, the frozen MViT-V2-S backbone, live scoring. |
@@ -99,7 +111,91 @@ you have calibrated a fixed camera. On an unseen camera the two differ only in w
 cuts, not in accuracy — see
 ["the video model detects more"](#the-video-model-detects-more-than-the-fused-one).
 
-## 1. Time-window model (uses motion, not a single pose)
+## 1. Your own activity classifier
+
+Record at least two classes (for example `idle` and `waving`) on the same camera you will use live.
+
+```bash
+python3 collect_data.py --label idle
+python3 collect_data.py --label waving
+```
+
+- Click the video window, then **hold `r`** to record. Press `q` to quit.
+- Aim for about 500+ frames per class; vary distance, angle and speed.
+- Use `--source clip.mp4` to process a whole video automatically. `--output` sets the CSV (default `dataset.csv`).
+- Each run appends to the CSV, so you can record several sessions.
+
+Train, then run live:
+
+```bash
+python3 train_model.py
+python3 live_inference.py
+```
+
+`train_model.py` options: `--input`, `--output` (default `activity_model.pkl`), `--max-missing`
+(drop rows with more than N of 17 keypoints undetected, default 8), `--test-size`, `--trees`, `--seed`.
+
+`live_inference.py` options: `--model`, `--source` (webcam index or video path), `--alert-class`
+(class that counts as suspicious, default `conceal`), `--alert-frames` (default 8), `--no-display`.
+When the alert class holds for `--alert-frames` frames in a row, a red banner appears and a final
+verdict is printed at the end.
+
+Notes:
+- Don't mirror/flip the camera in any script; it would swap left and right keypoints.
+- The "held `r`" key is inferred from OS key-repeat, so recording stops about 0.15 s after release.
+  Tune `FIRST_PRESS_GRACE_S` / `REPEAT_GRACE_S` at the top of `collect_data.py` if it feels off.
+- The accuracy printed by `train_model.py` uses a random split of frames, which is optimistic
+  because neighbouring frames are near-identical. Test on a separate recording for a real number.
+
+## 2. Rule-based shoplifting demo (no training)
+
+Draw the shelf zones once on your footage, then run the demo:
+
+```bash
+python3 define_zones.py --source store.mp4
+python3 shoplift_demo.py --source store.mp4
+```
+
+Per tracked person (ByteTrack IDs) it scores "wrist enters a shelf zone, then hand to the body within a
+few seconds". Scores decay over time; crossing the threshold raises an alert: the person is
+spotlighted, a head zoom is shown, a snapshot is saved to `alerts/`, and events go to `events.csv`
+and a side dashboard.
+
+Options: `--threshold` (default 40), `--window` (4 s), `--pocket-ratio`, `--decay`,
+`--conceal-region hip|torso`, `--save-video out.mp4`, `--no-display`, `--no-face-zoom`.
+
+**Accuracy is poor.** On the 8 Kaggle clips it missed the real concealments and gave false alarms on
+normal clips (best case 1 of 4 shoplifting clips caught, 3 of 4 normal clips falsely flagged). Pose alone
+cannot tell hiding an item from holding it. Treat every alert as "a person should look", never as proof.
+A bag cue from a COCO detector (handbag/backpack) was tried and made it worse, so it is not enabled.
+
+## 3. Training on the Kaggle shoplifting dataset
+
+Dataset: `simuletic/cctv-shoplifting-detection-dataset-yolo-and-vlm` (downloaded into `./kagglehub`).
+It has 456 frames from 8 short synthetic clips (4 shoplifting, 4 normal, 4 scenes).
+
+```bash
+python3 kaggle_to_csv.py
+python3 train_model.py --input kaggle_dataset.csv --output kaggle_model.pkl
+python3 live_inference.py --source kagglehub/datasets/simuletic/cctv-shoplifting-detection-dataset-yolo-and-vlm/versions/1/CCTV_Shoplifting_Dataset/videos/shoplifting1.mp4 --model kaggle_model.pkl
+```
+
+Frames are labelled `conceal` if they fall in the concealment segment described in the dataset's VLM
+JSON (shoplifting clips only), else `normal`. Keypoints are re-extracted with our own `yolo11n-pose`
+(the default). `--use-labels` would use the dataset's own keypoint labels instead, but those come from a
+different pose model, so the classifier then misreads live keypoints; don't use it.
+
+**Limits (measured):**
+
+| Test | Result |
+|---|---|
+| Trained on all 8 clips, verdict on those same clips | 8 of 8 correct |
+| Train on 3 scenes, verdict on the 4th (each scene) | 4 of 8 correct: all normal clips cleared, every shoplifting clip missed |
+
+The dataset is too small and too uniform for the model to learn the behaviour instead of the four
+scenes, so it will not work on new cameras or footage. Use it to demo the pipeline, not as a detector.
+
+## 4. Time-window model (uses motion, not a single pose)
 
 ```bash
 python3 demo.py --model kaggle_window_model.pkl      # the model ships; these rebuild it:
@@ -111,7 +207,7 @@ It classifies each tracked person's last ~1.5 s of keypoints. Measured with whol
 still 5 of 8 clips correct for both, because four scenes are too few. `demo.py` detects the model
 type automatically (window models are saved as a dict).
 
-## 2. Video model (looks at the pixels, not just the skeleton)
+## 5. Video model (looks at the pixels, not just the skeleton)
 
 ```bash
 python3 videos_to_embeddings.py     # ~180 videos -> clip embeddings (slow, one pass)
@@ -152,7 +248,7 @@ much higher chance over minutes of watching: replaying the held-out archive scor
 rule, a normal person trips it about once per minute of being watched, on the camera it was trained
 on.
 
-## 3. Fused model: one file, one threshold
+## 6. Fused model: one file, one threshold
 
 ```bash
 python3 train_fused_model.py
@@ -177,7 +273,7 @@ simply scores lower is not thereby better:
 In-domain the fusion is worth having: 7 more of 92 shoplifting videos caught than the video stream
 alone, at the same false-alarm rate. The AUC gain looks tiny (+0.013) because AUC averages over all
 thresholds; the operating point is where it shows. Do not compare these catch counts with section
-2's, which used a different fold split — a resplit moves them by several videos either way.
+5's, which used a different fold split — a resplit moves them by several videos either way.
 
 On a camera it has never seen, fusing changes nothing: all three stay at 0.562, i.e. chance. The
 two streams' per-video scores correlate 0.75, which is the explanation — they are largely reading
@@ -231,7 +327,7 @@ Also: a video from `archive/` or the Kaggle set is not a test. The shipped model
 of them, so near-perfect results there are a fit, not a measurement — the honest figures are the
 held-out ones in the tables above, and on your own camera they are the Kaggle column: chance.
 
-## 4. Browser front end
+## 7. Browser front end
 
 ```bash
 python3 web_app.py                                   # video model, webcam, port 8000

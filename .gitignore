@@ -12,8 +12,14 @@ kaggle_pose_data/
 !video_model.pkl
 !fused_model.pkl
 !kaggle_window_model.pkl
+!activity_model.pkl
+!kaggle_model.pkl
+!kaggle_full_model.pkl
 *.npz
 *.csv
+!dataset.csv
+!kaggle_dataset.csv
+!kaggle_full_dataset.csv
 runs/
 
 # Model weights: ultralytics downloads these on first use.
