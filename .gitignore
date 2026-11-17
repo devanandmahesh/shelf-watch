@@ -1,0 +1,32 @@
+# Datasets: downloaded or recorded, never committed. See the README for how to get them.
+kagglehub/
+archive/
+kaggle_pose_data/
+*.mp4
+*.avi
+*.mov
+
+# Training data: regenerate with the scripts (the CSVs and embeddings are hundreds of MB).
+# The trained models themselves DO ship, so every command in the README runs on a fresh clone.
+*.pkl
+!video_model.pkl
+!fused_model.pkl
+!kaggle_window_model.pkl
+*.npz
+*.csv
+runs/
+
+# Model weights: ultralytics downloads these on first use.
+*.pt
+
+# Demo output
+alerts/
+events.csv
+zones.json
+
+# Python / macOS
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.DS_Store

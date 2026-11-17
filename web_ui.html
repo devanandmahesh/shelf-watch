@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ShelfWatch</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --line: #e2e5ea; --ink: #15181d; --muted: #666e7a;
+    --accent: #2f6fd0; --ok: #1f9254; --warn: #c67100; --alert: #c62828; --bar: #eceff3;
+    --radius: 10px; --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #11141a; --panel: #181c23; --line: #262c36; --ink: #e8ebef; --muted: #9aa4b2;
+      --accent: #6aa6ff; --ok: #4cc38a; --warn: #e3a008; --alert: #f26b6b; --bar: #222833;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.3);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #11141a; --panel: #181c23; --line: #262c36; --ink: #e8ebef; --muted: #9aa4b2;
+    --accent: #6aa6ff; --ok: #4cc38a; --warn: #e3a008; --alert: #f26b6b; --bar: #222833;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 -apple-system,
+    BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 0 16px 48px;
+  }
+  header { max-width: 1180px; margin: 0 auto; padding: 22px 0 14px; }
+  h1 { font-size: 20px; margin: 0 0 6px; letter-spacing: -.01em; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font: 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 999px; padding: 5px 9px; background: var(--panel);
+  }
+  .layout { max-width: 1180px; margin: 0 auto; display: grid; gap: 16px; grid-template-columns: 1fr; }
+  @media (min-width: 900px) { .layout { grid-template-columns: minmax(0, 1.55fr) minmax(300px, 1fr); } }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 14px;
+  }
+  .card h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+    margin: 0 0 10px; font-weight: 600;
+  }
+  #view { width: 100%; display: block; border-radius: 8px; background: #000; aspect-ratio: 16/9;
+          object-fit: contain; }
+  .banner {
+    display: none; margin-bottom: 12px; padding: 10px 12px; border-radius: 8px; font-weight: 600;
+    background: color-mix(in srgb, var(--alert) 14%, transparent); color: var(--alert);
+    border: 1px solid color-mix(in srgb, var(--alert) 35%, transparent);
+  }
+  .banner.on { display: block; }
+  .person { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .person:last-child { border-bottom: 0; }
+  .person .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .id { font-weight: 600; }
+  .risk { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .bar { position: relative; height: 7px; background: var(--bar); border-radius: 4px; margin: 7px 0 5px; }
+  .fill { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--ok); }
+  .fill.over { background: var(--warn); }
+  .fill.flag { background: var(--alert); }
+  .mark { position: absolute; top: -3px; width: 2px; height: 13px; background: var(--muted); opacity: .75; }
+  .status { font: 11.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted);
+            overflow-wrap: anywhere; }
+  .flagged .id { color: var(--alert); }
+  .controls label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  .row { display: flex; align-items: center; gap: 10px; }
+  input[type="range"] { flex: 1; accent-color: var(--accent); min-width: 0; }
+  .val { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; min-width: 3.4em; text-align: right; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  button {
+    font: inherit; font-size: 13px; padding: 7px 12px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { filter: brightness(1.07); color: #fff; }
+  .check { display: flex; gap: 8px; align-items: flex-start; margin-top: 14px; font-size: 13px; }
+  .check input { margin-top: 3px; accent-color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+       color: var(--muted); font-weight: 600; padding: 0 8px 6px 0; }
+  td { padding: 5px 8px 5px 0; border-top: 1px solid var(--line);
+       font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+  .ev-raised { color: var(--alert); font-weight: 600; }
+  .ev-cleared { color: var(--ok); }
+  .note { font-size: 12.5px; color: var(--muted); margin: 10px 0 0; }
+  .err { color: var(--alert); font-size: 13px; margin-top: 10px; }
+  .empty { color: var(--muted); font-size: 13px; }
+  footer { max-width: 1180px; margin: 20px auto 0; color: var(--muted); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ShelfWatch</h1>
+  <div class="chips" id="chips"></div>
+</header>
+
+<div class="layout">
+  <div>
+    <div class="banner" id="banner"></div>
+    <div class="card">
+      <img id="view" src="/stream.mjpg" alt="annotated camera view">
+      <p class="note" id="srcnote"></p>
+      <p class="err" id="err"></p>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h2>Alert log</h2>
+      <div id="logwrap"><p class="empty">No alerts yet.</p></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>People</h2>
+      <div id="people"><p class="empty">Nobody tracked.</p></div>
+    </div>
+
+    <div class="card controls" style="margin-top:16px">
+      <h2>Controls</h2>
+      <label for="thr">Alert threshold <span id="thrhint"></span></label>
+      <div class="row">
+        <input type="range" id="thr" min="0.05" max="0.99" step="0.01">
+        <span class="val" id="thrval">—</span>
+      </div>
+      <label for="clips">Clip scores before a verdict</label>
+      <div class="row">
+        <input type="range" id="clips" min="3" max="20" step="1">
+        <span class="val" id="clipsval">—</span>
+      </div>
+      <div class="check">
+        <input type="checkbox" id="suppress">
+        <label for="suppress" style="margin:0">Calibrating: this footage has no theft in it, so
+          measure risk but raise no alerts</label>
+      </div>
+      <div class="buttons">
+        <button id="pause">Pause</button>
+        <button id="clear">Clear alerts</button>
+        <button id="resetcal">Reset calibration</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Calibration</h2>
+      <div id="cal"><p class="empty">Nothing measured yet.</p></div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  An alert is a prompt for a human to look, never proof of anything. On a camera the model was not
+  trained on it is barely better than guessing — calibrate on your own theft-free footage first.
+</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let dragging = null, paused = false;
+
+function pct(x) { return (x * 100).toFixed(0) + "%"; }
+
+function render(s) {
+  const m = s.model, warm = m.warmup_s ? `warm-up ~${m.warmup_s}s` : null;
+  $("chips").innerHTML = [
+    m.path, m.kind, m.device ? "MViT on " + m.device : null,
+    m.threshold != null ? "threshold " + m.threshold.toFixed(2) : null,
+    warm, `${s.fps} fps`, s.source.webcam ? "webcam " + s.source.name : s.source.name,
+    s.paused ? "paused" : null, s.suppress ? "calibrating" : null,
+  ].filter(Boolean).map((t) => `<span class="chip">${t}</span>`).join("");
+
+  const flagged = s.alerted || [];
+  $("banner").className = "banner" + (flagged.length ? " on" : "");
+  $("banner").textContent = flagged.length
+    ? "Suspected: ID " + flagged.join(", ") + " — look at the view before acting"
+    : "";
+
+  $("err").textContent = s.error || "";
+  $("srcnote").textContent = s.source.done
+    ? "The video file ended. Restart with --loop to replay it, or pass a webcam index."
+    : "";
+
+  const people = s.people || [];
+  $("people").innerHTML = people.length ? people.map((p) => {
+    const cls = p.flagged ? "flag" : (p.alerting ? "over" : "");
+    const width = p.risk == null ? 0 : Math.min(100, p.risk * 100);
+    return `<div class="person ${p.flagged ? "flagged" : ""}">
+      <div class="top"><span class="id">ID ${p.id}${p.flagged ? " — SUSPECT" : ""}</span>
+      <span class="risk">${p.risk == null ? "collecting" : pct(p.risk)}</span></div>
+      <div class="bar"><div class="fill ${cls}" style="width:${width}%"></div>
+      <div class="mark" style="left:${(p.threshold * 100).toFixed(1)}%"></div></div>
+      <div class="status">${p.status || ""}</div></div>`;
+  }).join("") : '<p class="empty">Nobody tracked.</p>';
+
+  const log = s.log || [];
+  $("logwrap").innerHTML = log.length
+    ? `<table><thead><tr><th>time</th><th>event</th><th>id</th><th>risk</th><th>threshold</th>
+       <th>frame</th></tr></thead><tbody>` + log.map((e) => `<tr><td>${e.at}</td>
+       <td class="ev-${e.event}">${e.event}</td><td>${e.id}</td><td>${e.risk}</td>
+       <td>${e.threshold}</td><td>${e.frame}</td></tr>`).join("") + "</tbody></table>"
+    : '<p class="empty">No alerts yet.</p>';
+
+  const c = s.calibration;
+  $("cal").innerHTML = c.highest == null
+    ? '<p class="empty">Nothing measured yet.</p>'
+    : `<p class="note" style="margin-top:0">Highest risk reached by any of the ${c.people} people
+       scored: <strong>${pct(c.highest)}</strong>. At the current threshold this footage would have
+       flagged <strong>${c.over_threshold}</strong> of them.</p>
+       <p class="note">If none of it was theft, a threshold of <strong>${c.suggested}</strong> would
+       keep this camera quiet — and would cost real detections too.</p>`;
+
+  if (dragging !== "thr") { $("thr").value = m.threshold ?? 0.5; $("thrval").textContent = (m.threshold ?? 0).toFixed(2); }
+  if (dragging !== "clips") { $("clips").value = m.min_clips ?? 12; $("clipsval").textContent = m.min_clips ?? "—"; }
+  $("thr").disabled = m.threshold == null;
+  $("clips").disabled = m.min_clips == null;
+  $("thrhint").textContent = m.threshold == null ? "(pose models have no threshold)" : "";
+  $("suppress").checked = !!s.suppress;
+  paused = !!s.paused;
+  $("pause").textContent = paused ? "Resume" : "Pause";
+  $("pause").className = paused ? "primary" : "";
+}
+
+async function send(body) {
+  try { render(await (await fetch("/api/control", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  })).json()); } catch (e) { $("err").textContent = String(e); }
+}
+
+async function poll() {
+  try { render(await (await fetch("/api/state")).json()); }
+  catch (e) { $("err").textContent = "Lost the server: " + e; }
+}
+
+for (const [id, key, read] of [["thr", "threshold", (v) => +v], ["clips", "min_clips", (v) => +v]]) {
+  $(id).addEventListener("input", (e) => {
+    dragging = id;
+    $(id === "thr" ? "thrval" : "clipsval").textContent =
+      id === "thr" ? (+e.target.value).toFixed(2) : e.target.value;
+  });
+  $(id).addEventListener("change", (e) => { dragging = null; send({ [key]: read(e.target.value) }); });
+}
+$("pause").addEventListener("click", () => send({ paused: !paused }));
+$("clear").addEventListener("click", () => send({ clear_alerts: true }));
+$("resetcal").addEventListener("click", () => send({ reset_calibration: true }));
+$("suppress").addEventListener("change", (e) => send({ suppress: e.target.checked }));
+$("view").addEventListener("error", () => { $("view").src = "/stream.mjpg?" + Date.now(); });
+
+poll();
+setInterval(poll, 500);
+</script>
+</body>
+</html>
